@@ -1,0 +1,53 @@
+Resources:
+  LambdaFunction:
+    Type: 'AWS::Lambda::Function'
+    Properties:
+      Handler: index.handler
+      Runtime: nodejs14.x
+      Role: !GetAtt LambdaFunctionRole.Arn
+      Code:
+        ZipFile: |
+          exports.handler = async (kinesisEvent) => {
+            console.log(JSON.stringify(kinesisEvent));
+          }
+  LambdaFunctionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+        - Effect: Allow
+          Principal:
+            Service:
+            - lambda.amazonaws.com
+          Action:
+          - sts:AssumeRole
+      Path: "/"
+      Policies:
+      - PolicyName: LambdaFunctionRolePolicy
+        PolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+          - Effect: Allow
+            Action:
+            - logs:CreateLogGroup
+            - logs:CreateLogStream
+            - logs:PutLogEvents
+            Resource: "*"
+          - Effect: Allow
+            Action:
+            - kinesis:GetRecords
+            - kinesis:GetShardIterator
+            - kinesis:DescribeStream
+            - kinesis:ListStreams
+            Resource: YOUR_KINESIS_STREAM_ARN                 # CHANGE THIS
+  LambdaFunctionKinesisEventSourceMapping:
+      Type: AWS::Lambda::EventSourceMapping
+      DependsOn:
+      - LambdaFunctionRole
+      Properties:
+        BatchSize: 10
+        Enabled: true
+        StartingPosition: TRIM_HORIZON
+        EventSourceArn: YOUR_KINESIS_STREAM_ARN               # CHANGE THIS
+        FunctionName: !GetAtt LambdaFunction.Arn

@@ -1,0 +1,64 @@
+Resources:
+  LambdaFunction:
+    Type: 'AWS::Lambda::Function'
+    Properties:
+      Handler: index.handler
+      Runtime: nodejs14.x
+      Role: !GetAtt LambdaFunctionRole.Arn
+      Code:
+        ZipFile: |
+          exports.handler = async (s3Event) => {
+            console.log(JSON.stringify(s3Event));
+          }
+  LambdaFunctionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+        - Effect: Allow
+          Principal:
+            Service:
+            - lambda.amazonaws.com
+          Action:
+          - sts:AssumeRole
+      Path: "/"
+      Policies:
+      - PolicyName: LambdaFunctionRolePolicy
+        PolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+          - Effect: Allow
+            Action:
+            - logs:CreateLogGroup
+            - logs:CreateLogStream
+            - logs:PutLogEvents
+            Resource: "*"
+
+  # Allows S3 to call our Lambda function.
+  LambdaFunctionS3Permission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !GetAtt LambdaFunction.Arn
+      Principal: s3.amazonaws.com
+      SourceAccount: !Ref AWS::AccountId
+      SourceArn:
+        !Join
+        - ''
+        - - 'arn:'
+          - Ref: AWS::Partition
+          - ':s3:::'
+          - my-bucket                         # CHANGE THIS
+
+  # Create our S3 bucket, pre-configured to invoke our Lambda.
+  S3Bucket:
+    Type: AWS::S3::Bucket
+    DependsOn:
+    - LambdaFunctionS3Permission
+    Properties:
+      BucketName: my-bucket                   # CHANGE THIS
+      NotificationConfiguration:
+        LambdaConfigurations:
+        - Event: s3:*
+          Function: !GetAtt LambdaFunction.Arn

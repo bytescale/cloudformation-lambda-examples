@@ -1,0 +1,125 @@
+Resources:
+
+  # Our API: we'll use a separate Lambda function per route.
+  RestApi:
+    Type: AWS::ApiGateway::RestApi
+    Properties:
+      EndpointConfiguration:
+        Types:
+        - EDGE
+      Name: simple-rest-endpoint
+  RestApiDeployment:
+    Type: AWS::ApiGateway::Deployment
+    DependsOn:
+    - HelloWorldApiGatewayMethod
+    Properties:
+      RestApiId: !Ref RestApi
+      StageName: dev
+
+  # Route 1: GET /hello_world
+  HelloWorldApiGatewayResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      ParentId: !GetAtt RestApi.RootResourceId
+      PathPart: hello_world
+      RestApiId: !Ref RestApi
+  HelloWorldApiGatewayMethod:
+    Type: AWS::ApiGateway::Method
+    DependsOn:
+    - HelloWorldFunctionApiGatewayPermission
+    Properties:
+      ApiKeyRequired: false
+      AuthorizationType: NONE
+      HttpMethod: GET
+      Integration:
+        IntegrationHttpMethod: POST
+        Type: AWS_PROXY
+        Uri:
+          !Join
+          - ''
+          - - 'arn:'
+            - !Ref AWS::Partition
+            - ':apigateway:'
+            - !Ref AWS::Region
+            - :lambda:path/2015-03-31/functions/
+            - !GetAtt HelloWorldFunction.Arn
+            - /invocations
+      ResourceId: !Ref HelloWorldApiGatewayResource
+      RestApiId: !Ref RestApi
+  HelloWorldFunctionApiGatewayPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !GetAtt HelloWorldFunction.Arn
+      Principal: apigateway.amazonaws.com
+      SourceArn:
+        !Join
+        - ''
+        - - 'arn:'
+          - !Ref AWS::Partition
+          - ':execute-api:'
+          - !Ref AWS::Region
+          - ':'
+          - !Ref AWS::AccountId
+          - ':'
+          - !Ref RestApi
+          - /*/*
+  HelloWorldFunctionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+        - Effect: Allow
+          Principal:
+            Service:
+            - lambda.amazonaws.com
+          Action:
+          - sts:AssumeRole
+      Path: "/"
+      Policies:
+      - PolicyName: AppendToLogsPolicy
+        PolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+          - Effect: Allow
+            Action:
+            - logs:CreateLogGroup
+            - logs:CreateLogStream
+            - logs:PutLogEvents
+            Resource: "*"
+  HelloWorldFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      Code:
+        ZipFile: |
+          exports.handler = async (event) => {
+            return {
+              isBase64Encoded: false,
+              statusCode:      200,
+              headers:         { "content-type": "text/plain"},
+              body:            `Your request:\n\n${JSON.stringify(event)}`
+            }
+          }
+      Handler: index.handler
+      Role: !GetAtt HelloWorldFunctionRole.Arn
+      Runtime: nodejs14.x
+
+
+  # Route 2: ... copy the above block to make another! ...
+
+
+# Outputs the URL to our Lambda REST API.
+Outputs:
+  ApiUrl:
+    Description: URL of the REST API.
+    Value:
+      Fn::Join:
+      - ''
+      - - https://
+        - Ref: RestApi
+        - .execute-api.
+        - Ref: AWS::Region
+        - .
+        - Ref: AWS::URLSuffix
+        - /dev
